@@ -1,0 +1,148 @@
+<?php
+// $Id:
+
+/**
+ * @file
+ *   Integrates TalkPlus Chat in a Drupal site.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function talkplus_global_menu() {
+  $items = array();
+
+  $items['admin/settings/talkplus_global'] = array(
+    'title' => 'TalkPlus settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('talkplus_global_settings'),
+    'access arguments' => array('administer site configuration') 
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_footer().
+ */
+function talkplus_global_footer() {
+  // Note that the 'talkplus_global_enable' variable can be (un)set in
+  // the $conf array in settings.php, or by another module to enable/disable
+  // however, there is not a user interface for this variable.
+  if (variable_get('talkplus_global_enable', 1)) {
+    if (!variable_get('talkplus_global_context', 0)) {
+      talkplus_global_add_js();
+      return variable_get('talkplus_global_code', '');
+    }
+    else {
+      if ($plugin = context_get_plugin('reaction', 'talkplus_global_add')) {
+        if ($plugin->execute()) {
+          talkplus_global_add_js();
+          return variable_get('talkplus_global_code', '');
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_context_registry().
+ */
+function talkplus_global_context_registry() {
+  return array(
+    'reactions' => array(
+      'talkplus_global_add' => array(
+        'title' => t('TalkPlus'),
+        'plugin' => 'talkplus_global_context_reaction_add',
+        'description' => t('Add TalkPlus chat code to the page'),
+      ),
+    ),
+  );
+}
+
+/**
+ * Notify CTools that we'll be using the plugin API with Context module.
+ */
+function talkplus_global_ctools_plugin_api($module, $api) {
+  if ($module == 'context' && $api == 'plugins') {
+    return array('version' => 3);
+  }
+}
+
+/**
+ * CTools plugin API hook for Context.
+ */
+function talkplus_global_context_plugins() {
+  $plugins = array();
+  $plugins['talkplus_global_context_reaction_add'] = array(
+    'handler' => array(
+      'path' => drupal_get_path('module', 'talkplus_global') . '/plugins',
+      'file' => 'talkplus_global_context_reaction_add.inc',
+      'class' => 'talkplus_global_context_reaction_add',
+      'parent' => 'context_reaction',
+    ),
+  );
+
+  return $plugins;
+}
+
+/**
+ * Settings form.
+ */
+function talkplus_global_settings() {
+  $form = array();
+  $form['talkplus_global_code'] = array(
+    '#type' => 'textarea',
+    '#title' => t('TalkPlus code'),
+    '#description' => t('Paste the Javascript code block from <a href="http://talkplus_global.com/install">TalkPlus.com</a>'),
+    '#default_value' => variable_get('talkplus_global_code', ''),
+  );
+  $form['talkplus_global_ios'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Disable in iOS devices'),
+    '#description' => t('Hides it on iPhone, iPad and iPod since it has issues in this plataforms.'),
+    '#default_value' => variable_get('talkplus_global_ios', ''),
+  );
+  if (module_exists('context')) {
+    $form['talkplus_global_context'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Use Context to choose when TalkPlus is added to the page.'),
+      '#description' => t('The TalkPlus code will be included on all pages of your site by default. You can use <a href="!context_url">Context module</a> to fine tune when and where it will be displayed.', array('!context_url' => url('admin/build/context'))),
+      '#default_value' => variable_get('talkplus_global_context', 0),
+    );
+  }
+  return system_settings_form($form);
+}
+
+/**
+ * Builds and inserts the correct TalkPlus Javascript into the page.
+ */
+function talkplus_global_add_js() {
+  static $added;
+  if (!isset($added)) {
+    global $user;
+    
+    $path = drupal_get_path('module', 'talkplus_global');  
+    drupal_add_js($path . '/talkplus_global.js');
+    
+    $setting = array('talkplus_global' => array());
+    
+    // If the user is logged in, let's get some pertinent information and
+    // pass it along as well.
+    if ($user->uid) {
+      $setting['talkplus_global']['uid'] = $user->uid;
+      $setting['talkplus_global']['name'] = $user->name;
+      //$setting['talkplus_global']['mail'] = t('email !mail', array('!mail' => $user->mail));
+      $setting['talkplus_global']['mail'] = $user->mail;
+      $setting['talkplus_global']['roles'] = t('roles !roles', array('!roles' => implode(', ', $user->roles)));
+      $setting['talkplus_global']['userpage'] = url('user/' . $user->uid, array('absolute' => TRUE));
+      $setting['talkplus_global']['loggedinas'] = t('logged in as !link', array('!link' => l($user->name, 'user/' . $user->uid, array('absolute' => TRUE))));
+    }
+    
+    $setting['talkplus_global']['disable_ios'] = variable_get('talkplus_global_ios', '');
+    $setting['talkplus_global']['enabled'] = variable_get('talkplus_global_enable', 1);
+    drupal_add_js($setting, 'setting');
+      
+    $added = TRUE;
+  }
+}

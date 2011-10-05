@@ -1,0 +1,7 @@
+; Id:
+
+name = TalkPlus Chat
+description = TalkPlus chat integration.
+core = 6.x
+
+
